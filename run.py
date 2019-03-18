@@ -9,6 +9,7 @@ from __future__ import print_function
 
 from datetime import datetime
 import os.path
+import os
 import time
 
 import numpy as np
@@ -111,7 +112,7 @@ def do_train(sess, args):
         img,lbl = sess.run([images, labels], options= args.run_options, run_metadata= args.run_metadata)
 
         # train on the loaded batch of data
-        _, loss_value, top1_accuracy, topn_accuracy = sess.run(train_ops, feed_dict = {images_ph: img, labels_ph: lbl, is_training_ph: True},
+        _, loss_value, top1_accuracy, topn_accuracy, layer_gradients_list = sess.run(train_ops, feed_dict = {images_ph: img, labels_ph: lbl, is_training_ph: True},
                 options= args.run_options, run_metadata= args.run_metadata)
         duration = time.time() - start_time
 
@@ -131,6 +132,16 @@ def do_train(sess, args):
           sys.stdout.flush()
         
         if step % 100 == 0:
+          # Save model gradients after each training epoch
+          # layer_gradients_list = sess.run(tf.get_collection('gradients'))
+          gradients_path = './'+str(epoch)+'_'+str(step)
+          if not os.path.exists(gradients_path):
+            os.makedirs(gradients_path)
+          var_list = tf.trainable_variables()
+          for var, layer_gradients in zip(var_list, layer_gradients_list):
+            filename = var.name.replace('/', '_').replace(':', '_')
+            np.save(gradients_path+'/'+filename+'.npy', layer_gradients)
+          print("Step %d of %d ended. a gradients saved"%(step, args.num_batches))
           summary_str = sess.run(tf.summary.merge_all(), feed_dict={images_ph: img, labels_ph: lbl, is_training_ph: True})
           summary_writer.add_summary(summary_str, args.num_batches * epoch + step)
           if args.log_debug_info:
@@ -139,7 +150,6 @@ def do_train(sess, args):
       # Save the model checkpoint periodically after each training epoch
       checkpoint_path = os.path.join(args.log_dir, args.snapshot_prefix)
       dnn_model.save(sess, checkpoint_path, global_step= epoch)
-
       print("Epoch %d of %d ended. a checkpoint saved at %s"%(epoch, start_epoch + args.num_epochs-1, args.log_dir))
       sys.stdout.flush()
       # if validation data are provided, evaluate accuracy on the validation set after the end of each epoch
@@ -289,9 +299,9 @@ def main():  # pylint: disable=unused-argument
     parser.add_argument('command', action= 'store', help= 'Determines what to do: train, evaluate, or inference')
     parser.add_argument('--raw_size', nargs= 3, default= [256,256,3], type= int, action= 'store', help= 'The width, height and number of channels of images for loading from disk')
     parser.add_argument('--processed_size', nargs= 3, default= [224,224,3], type= int, action= 'store', help= 'The width and height of images after preprocessing')
-    parser.add_argument('--batch_size', default= 128, type= int, action= 'store', help= 'The batch size for training, evaluating, or inference')
+    parser.add_argument('--batch_size', default= 32, type= int, action= 'store', help= 'The batch size for training, evaluating, or inference')
     parser.add_argument('--num_classes', default= 1000 , type=int, action='store', help= 'The number of classes')
-    parser.add_argument('--num_prefetch', default= 2000 , type= int, action= 'store', help= 'The number of pre-fetched images in the training queue, reduce this to consume less RAM')
+    parser.add_argument('--num_prefetch', default= 256 , type= int, action= 'store', help= 'The number of pre-fetched images in the training queue, reduce this to consume less RAM')
     parser.add_argument('--num_epochs', default= 55, type= int, action= 'store', help= 'The number of training epochs')
     parser.add_argument('--path_prefix', default= './', action='store', help= 'the prefix address for images')
     parser.add_argument('--train_info', default= None, action= 'store', help= 'Name of the file containing addresses and labels of training images')
